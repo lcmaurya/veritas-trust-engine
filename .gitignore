@@ -1,0 +1,11 @@
+node_modules/
+*.log
+
+# sensitive
+private.pem
+secure_db.json
+identity_db.json
+chain.json
+
+# env
+.env

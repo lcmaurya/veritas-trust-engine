@@ -1,21 +1,27 @@
 const crypto = require('crypto');
-const fs = require('fs');
 
-const PRIVATE_KEY = fs.readFileSync('./private.pem', 'utf8');
+// 🔐 ENV KEY (Render + local दोनों में काम करेगा)
+const SECRET = process.env.ENGINE_SECRET || "dev_fallback_key";
 
+// 🔹 hash
 function sha256(data) {
   return crypto.createHash('sha256').update(data).digest('hex');
 }
 
+// 🔹 HMAC sign (file नहीं, key से)
+function sign(data) {
+  return crypto
+    .createHmac('sha256', SECRET)
+    .update(data)
+    .digest('hex');
+}
+
+// 🔹 proof create
 function createProof(name, dob) {
 
   const hash = sha256(name + dob);
 
-  const sign = crypto.createSign('SHA256');
-  sign.update(hash);
-  sign.end();
-
-  const signature = sign.sign(PRIVATE_KEY, 'hex');
+  const signature = sign(hash);
 
   return { hash, signature };
 }
