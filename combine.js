@@ -5,11 +5,19 @@ const {addBlock} = require('./hashchain');
 const {storeSecure} = require('./secure_store');
 const crypto = require('crypto');
 
-// 🔐 PRIVATE KEY (later secure store)
-const SECRET = process.env.ENGINE_SECRET;
+// 🔐 ENV KEY
+const SECRET = process.env.ENGINE_SECRET || "dev_fallback_key";
 
-// 🔥 IMPORTANT: engine path
-const engine = require('../veritas-engine-core-v1.1/index');
+// 🔥 TEMP ENGINE (Render fix)
+const engine = {
+  decide: async (message) => {
+    // simple demo logic
+    if (message.toLowerCase().includes('win') || message.toLowerCase().includes('lottery')) {
+      return { decision: 3 };
+    }
+    return { decision: 0 };
+  }
+};
 
 // 🔐 decision hash
 function hashDecision(decision) {
@@ -42,7 +50,6 @@ async function run(name, dob, message) {
 
   const result = await engine.decide(message);
 
-  // 🔐 decision hash + signature
   const decision_hash = hashDecision(result.decision);
   const decision_signature = signDecision(decision_hash);
 
