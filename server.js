@@ -1,157 +1,77 @@
 const http = require('http');
 const {run} = require('./combine');
-const {verifyChain} = require('./verify_chain');
-const {verifyData} = require('./verify_record');
 
 const PORT = process.env.PORT || 4000;
-
-// 🔐 API KEY
 const API_KEY = "mysecret123";
 
-// 🔥 RATE LIMIT
-const rateLimit = {};
+// 🔥 In-memory store (demo purpose)
+const proofs = {};
 
-function checkRate(ip) {
-const now = Date.now();
-
-if (!rateLimit[ip]) {
-rateLimit[ip] = [];
-}
-
-rateLimit[ip] = rateLimit[ip].filter(t => now - t < 10000);
-
-if (rateLimit[ip].length >= 5) {
-return false;
-}
-
-rateLimit[ip].push(now);
-return true;
-}
-
-// 🔹 helper: body read
 function getBody(req) {
-return new Promise((resolve, reject) => {
-let body = '';
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
 
-req.on('data', chunk => body += chunk);
-req.on('end', () => resolve(body));
-req.on('error', reject);
-
-});
+function uid() {
+  return Math.random().toString(36).substring(2, 10);
 }
 
 const server = http.createServer(async (req, res) => {
 
-// ✅ CORS FIX
-res.setHeader("Access-Control-Allow-Origin", "*");
-res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-api-key");
-res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  // ===================== GENERATE =====================
+  if (req.method === 'POST' && req.url === '/generate') {
 
-// ✅ OPTIONS handler
-if (req.method === "OPTIONS") {
-res.writeHead(200);
-return res.end();
-}
+    const key = req.headers['x-api-key'];
+    if (key !== API_KEY) {
+      res.writeHead(403);
+      return res.end(JSON.stringify({error:"Forbidden"}));
+    }
 
-try {
+    const data = JSON.parse(await getBody(req));
 
-// ===================== CHECK =====================
-if (req.method === 'POST' && req.url === '/check') {
+    const result = await run(data.name, data.dob, data.message);
 
-  const clientKey = req.headers['x-api-key'];
-  if (clientKey !== API_KEY) {
-    res.writeHead(403);
-    return res.end(JSON.stringify({error: "Forbidden"}));
+    const id = uid();
+
+    proofs[id] = {
+      message: data.message,
+      hash: result.decision_hash,
+      signature: result.decision_signature,
+      block: result.block.index
+    };
+
+    res.writeHead(200, {'Content-Type':'application/json'});
+    return res.end(JSON.stringify({
+      id,
+      link: "https://veritasengine.in/proof.html?id=" + id,
+      ...proofs[id]
+    }));
   }
 
-  let ip = req.socket.remoteAddress;
-  if (ip === '::1') ip = '127.0.0.1';
+  // ===================== GET PROOF =====================
+  if (req.method === 'GET' && req.url.startsWith('/proof')) {
 
-  if (!checkRate(ip)) {
-    res.writeHead(429);
-    return res.end(JSON.stringify({error: "Too many requests"}));
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const id = url.searchParams.get('id');
+
+    if (!proofs[id]) {
+      res.writeHead(404);
+      return res.end(JSON.stringify({error:"Not found"}));
+    }
+
+    res.writeHead(200, {'Content-Type':'application/json'});
+    return res.end(JSON.stringify(proofs[id]));
   }
 
-  const raw = await getBody(req);
-  if (!raw) {
-    res.writeHead(400);
-    return res.end(JSON.stringify({error: "Empty body"}));
-  }
-
-  const data = JSON.parse(raw);
-
-  if (!data.name || !data.dob || !data.message) {
-    res.writeHead(400);
-    return res.end(JSON.stringify({error: "Missing fields"}));
-  }
-
-  const result = await run(
-    data.name,
-    data.dob,
-    data.message
-  );
-
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  return res.end(JSON.stringify(result));
-}
-
-// ===================== VERIFY =====================
-else if (req.method === 'POST' && req.url === '/verify') {
-
-  const clientKey = req.headers['x-api-key'];
-  if (clientKey !== API_KEY) {
-    res.writeHead(403);
-    return res.end(JSON.stringify({error: "Forbidden"}));
-  }
-
-  let ip = req.socket.remoteAddress;
-  if (ip === '::1') ip = '127.0.0.1';
-
-  if (!checkRate(ip)) {
-    res.writeHead(429);
-    return res.end(JSON.stringify({error: "Too many requests"}));
-  }
-
-  const raw = await getBody(req);
-  if (!raw) {
-    res.writeHead(400);
-    return res.end(JSON.stringify({error: "Empty body"}));
-  }
-
-  const data = JSON.parse(raw);
-
-  const expected = await run(data.name, data.dob, data.message);
-
-  const valid =
-    expected.decision_hash === data.decision_hash &&
-    expected.decision_signature === data.decision_signature;
-
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  return res.end(JSON.stringify({ valid }));
-}
-
-// ===================== VERIFY CHAIN =====================
-else if (req.method === 'GET' && req.url === '/verify-chain') {
-
-  const result = verifyChain();
-
-  res.writeHead(200, {'Content-Type': 'application/json'});
-  return res.end(JSON.stringify(result));
-}
-
-// ===================== DEFAULT =====================
-else {
   res.writeHead(404);
-  return res.end('Not Found');
-}
-
-} catch (e) {
-res.writeHead(500);
-res.end(JSON.stringify({error: e.message}));
-}
+  res.end("Not Found");
 
 });
 
 server.listen(PORT, () => {
-console.log('🚀 SECURE SERVER RUNNING ON PORT ' + PORT);
+  console.log("🚀 Server running on " + PORT);
 });
