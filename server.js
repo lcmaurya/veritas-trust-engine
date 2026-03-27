@@ -120,10 +120,14 @@ else if (req.method === 'POST' && req.url === '/verify') {
 
   const data = JSON.parse(raw);
 
-  const result = verifyData(data);
+  const expected = await run(data.name, data.dob, data.message);
+
+  const valid =
+    expected.decision_hash === data.decision_hash &&
+    expected.decision_signature === data.decision_signature;
 
   res.writeHead(200, {'Content-Type': 'application/json'});
-  return res.end(JSON.stringify(result));
+  return res.end(JSON.stringify({ valid }));
 }
 
 // ===================== VERIFY CHAIN =====================
