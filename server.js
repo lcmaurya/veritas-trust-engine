@@ -4,15 +4,15 @@ const {run} = require('./combine');
 const PORT = process.env.PORT || 4000;
 const API_KEY = "mysecret123";
 
-// 🔥 In-memory store (demo purpose)
+// 🔥 storage
 const proofs = {};
+const history = [];
 
 function getBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => resolve(body));
-    req.on('error', reject);
   });
 }
 
@@ -22,7 +22,7 @@ function uid() {
 
 const server = http.createServer(async (req, res) => {
 
-  // ===================== GENERATE =====================
+  // ===== GENERATE =====
   if (req.method === 'POST' && req.url === '/generate') {
 
     const key = req.headers['x-api-key'];
@@ -32,46 +32,59 @@ const server = http.createServer(async (req, res) => {
     }
 
     const data = JSON.parse(await getBody(req));
-
     const result = await run(data.name, data.dob, data.message);
 
     const id = uid();
 
-    proofs[id] = {
+    const proof = {
+      id,
       message: data.message,
       hash: result.decision_hash,
       signature: result.decision_signature,
-      block: result.block.index
+      block: result.block.index,
+      time: Date.now()
     };
+
+    proofs[id] = proof;
+    history.unshift(proof);
 
     res.writeHead(200, {'Content-Type':'application/json'});
     return res.end(JSON.stringify({
-      id,
-      link: "https://veritasengine.in/proof.html?id=" + id,
-      ...proofs[id]
+      ...proof,
+      link: "https://veritasengine.in/proof.html?id=" + id
     }));
   }
 
-  // ===================== GET PROOF =====================
+  // ===== GET PROOF =====
   if (req.method === 'GET' && req.url.startsWith('/proof')) {
 
     const url = new URL(req.url, `http://${req.headers.host}`);
     const id = url.searchParams.get('id');
 
-    if (!proofs[id]) {
-      res.writeHead(404);
-      return res.end(JSON.stringify({error:"Not found"}));
-    }
+    res.writeHead(200, {'Content-Type':'application/json'});
+    return res.end(JSON.stringify(proofs[id] || {}));
+  }
+
+  // ===== HISTORY =====
+  if (req.method === 'GET' && req.url === '/history') {
+    res.writeHead(200, {'Content-Type':'application/json'});
+    return res.end(JSON.stringify(history.slice(0,10)));
+  }
+
+  // ===== DASHBOARD =====
+  if (req.method === 'GET' && req.url === '/stats') {
 
     res.writeHead(200, {'Content-Type':'application/json'});
-    return res.end(JSON.stringify(proofs[id]));
+    return res.end(JSON.stringify({
+      total: history.length,
+      latestBlock: history[0]?.block || 0
+    }));
   }
 
   res.writeHead(404);
   res.end("Not Found");
-
 });
 
 server.listen(PORT, () => {
-  console.log("🚀 Server running on " + PORT);
+  console.log("🚀 Dashboard server running");
 });
