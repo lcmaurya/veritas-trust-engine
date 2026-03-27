@@ -4,7 +4,7 @@ const {run} = require('./combine');
 const PORT = process.env.PORT || 4000;
 const API_KEY = "mysecret123";
 
-// 🔥 storage (demo)
+// 🔥 storage (demo only)
 const proofs = {};
 const history = [];
 
@@ -24,6 +24,16 @@ function uid() {
 
 // ===== server =====
 const server = http.createServer(async (req, res) => {
+
+  // ✅ CORS FIX (VERY IMPORTANT)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-api-key');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    return res.end();
+  }
 
   try {
 
@@ -69,11 +79,18 @@ const server = http.createServer(async (req, res) => {
       proofs[id] = proof;
       history.unshift(proof);
 
-      res.writeHead(200, {'Content-Type':'application/json'});
-      return res.end(JSON.stringify({
-        ...proof,
+      const response = {
+        id: proof.id,
+        message: proof.message,
+        hash: proof.hash,
+        signature: proof.signature,
+        block: proof.block,
+        time: proof.time,
         link: "https://veritasengine.in/proof.html?id=" + id
-      }));
+      };
+
+      res.writeHead(200, {'Content-Type':'application/json'});
+      return res.end(JSON.stringify(response));
     }
 
     // ===== GET PROOF =====
@@ -123,5 +140,5 @@ const server = http.createServer(async (req, res) => {
 
 // ===== START =====
 server.listen(PORT, () => {
-  console.log("🚀 Veritas Dashboard Server Running on " + PORT);
+  console.log("🚀 Veritas Server Running on PORT " + PORT);
 });
