@@ -1,0 +1,7 @@
+node_modules/
+*.db
+*.sqlite
+private.pem
+secure_db.json
+identity_db.json
+.env
